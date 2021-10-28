@@ -15,6 +15,7 @@ these metavariables correctly appear in match messages
 - Metrics report the error type of semgrep core errors (Timeout, MaxMemory, etc.)
 - Correctly parse metavariables in JS template strings
 - Constant propagation: Tuple/Array destructuring assignments now correctly prevent constant propagation
+- Constant propagation: In a method call `x.f(y)`, if `x` is a constant then it will be recognized as such
 - Scala: parse underscore separators in number literals, and parse 'l'/'L' long suffix on number literals
 
 ### Changed
