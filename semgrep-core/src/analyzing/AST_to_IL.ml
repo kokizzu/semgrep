@@ -89,7 +89,11 @@ let log_fixme kind gany =
 
 let fixme_exp kind gany eorig =
   log_fixme kind (G.E eorig);
-  { e = FixmeExp (kind, gany); eorig }
+  { e = FixmeExp (kind, gany, None); eorig }
+
+let fixme_exp_of kind gany eorig subexp =
+  log_fixme kind (G.E eorig);
+  { e = FixmeExp (kind, gany, Some subexp); eorig }
 
 let fixme_instr kind gany eorig =
   log_fixme kind (G.E eorig);
@@ -579,9 +583,19 @@ and expr_aux env ?(void = false) eorig =
                 ss_for_e3 @ [ mk_s (Instr (mk_i (Assign (lval, e3)) e3orig)) ]
               )));
       lvalexp
-  | G.Xml _ -> todo (G.E eorig)
-  | G.Constructor (_, _) -> todo (G.E eorig)
-  | G.Yield (_, _, _)
+  | G.Yield (tok, Some e1orig, _) -> todo_exp env "yield" eorig tok e1orig
+  | G.Constructor (cname, (tok1, esorig, tok2)) ->
+      let es =
+        esorig
+        |> List.mapi (fun i eiorig ->
+               todo_exp env
+                 (spf "constructor/%s/%d" (G.show_name cname) i)
+                 eorig tok1 eiorig)
+      in
+      fixme_exp_of ToDo (G.E eorig) eorig
+        (mk_e (Composite (CTuple, (tok1, es, tok2))) eorig)
+  | G.Xml _
+  | G.Yield (_, None, _)
   | G.Await (_, _) ->
       todo (G.E eorig)
   | G.Cast (typ, _, e) ->
@@ -595,7 +609,16 @@ and expr_aux env ?(void = false) eorig =
   | G.DotAccessEllipsis _ ->
       sgrep_construct (G.E eorig)
   | G.StmtExpr _st -> todo (G.E eorig)
-  | G.OtherExpr (_, _) -> todo (G.E eorig)
+  | G.OtherExpr ((str, tok), xs) ->
+      let es =
+        xs
+        |> List.filter_map (fun x ->
+               match x with
+               | G.E e1orig -> Some (todo_exp env str eorig tok e1orig)
+               | __else__ -> None)
+      in
+      fixme_exp_of ToDo (G.E eorig) eorig
+        (mk_e (Composite (CTuple, (tok, es, tok))) eorig)
 
 and expr env ?void eorig =
   try expr_aux env ?void eorig
@@ -606,6 +629,13 @@ and expr_opt env = function
       let void = G.Unit (G.fake "void") in
       mk_e (Literal void) (G.L void |> G.e)
   | Some e -> expr env e
+
+and todo_exp env str eorig tok e1orig =
+  let lval = fresh_lval env (Parse_info.fake_info tok str) in
+  let e1 = expr env e1orig in
+  add_stmt env @@ mk_s (Instr (mk_i (Assign (lval, e1)) e1orig));
+  let subexp = mk_e (Fetch lval) eorig in
+  fixme_exp_of ToDo (G.E eorig) eorig subexp
 
 and call_generic env ?(void = false) tok e args =
   let eorig = G.Call (e, args) |> G.e in
